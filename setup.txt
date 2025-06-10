@@ -1,0 +1,7 @@
+deepface
+torch
+tensorflow
+tk
+numpy
+opencv-python
+matplotlib

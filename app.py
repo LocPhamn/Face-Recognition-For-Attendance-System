@@ -10,8 +10,6 @@ from datetime import datetime
 from tkinter import messagebox as mess
 import cv2
 import numpy as np
-import pandas as pd
-from deepface.modules import detection, preprocessing, verification
 from deepface.models.spoofing.FasNet import Fasnet
 from model.classification_model import FacialRecognitionModel
 from module import config, find, utils
@@ -55,18 +53,18 @@ def validate_input(entry_id, entry_name):
     # Validate ID
     if not id_value:
         messagebox.showerror("Error", "ID cannot be empty")
-        return False
+        return
     if not re.match(id_pattern, id_value):
         messagebox.showerror("Error", "ID must contain only numbers and be 1-3 digits long")
-        return False
+        return
 
     # Validate Name
     if not name_value:
         messagebox.showerror("Error", "Name cannot be empty")
-        return False
+        return
     if not re.match(name_pattern, name_value):
         messagebox.showerror("Error", "Name must contain only letters, spaces, or hyphens (max 50 characters)")
-        return False
+        return
 
     return True
 
@@ -126,32 +124,116 @@ def check_id_exists(id_value):
                 return True
     return False
 
+def check_admin_account():
+    """
+    Check if admin credentials are set in the admin file.
+
+    Returns:
+        tuple: (admin_username, admin_password) if credentials exist, else None
+    """
+    username = entry_username.get().strip()
+    password = entry_password.get().strip()
+
+    if not os.path.exists(config.ADMIN_DIR):
+        return False
+    with open(config.ADMIN_DIR, 'r') as f:
+        lines = f.readlines()
+        if len(lines) < 2:
+            return False
+        admin_username = lines[0].strip()
+        admin_password = lines[1].strip()
+        if username == admin_username and password == admin_password:
+            return True
+        return False
+
+def change_password():
+    """
+    Change the admin password by verifying the current password and setting a new one.
+
+    Validates inputs, checks current password, and updates the password in the file.
+    """
+    if not check_admin_account():
+        messagebox.showerror("Error", "Invalid admin credentials")
+        return
+
+    old_pass.delete(0, 'end')
+    new_pass.delete(0, 'end')
+    confirm_pass.delete(0, 'end')
+
+    change_pass_window.deiconify()
+    change_pass_window.grab_set()
+
+    def do_change_password():
+        current_password = old_pass.get().strip()
+        new_password_val = new_pass.get().strip()
+        confirm_pass_val = confirm_pass.get().strip()
+
+        # Đọc mật khẩu hiện tại từ file
+        admin_username = "admin"
+        admin_password = None
+        if os.path.exists(config.ADMIN_DIR):
+            with open(config.ADMIN_DIR, 'r') as f:
+                lines = f.readlines()
+                admin_password = lines[1].strip() if len(lines) > 1 else None
+        if admin_password is None:
+            messagebox.showerror("Error", "Admin password file is corrupted!")
+            return
+
+        if not current_password or not new_password_val or not confirm_pass_val:
+            messagebox.showerror("Error", "All fields are required")
+        elif current_password != admin_password:
+            messagebox.showerror("Error", "Old password is incorrect")
+        elif new_password_val != confirm_pass_val:
+            messagebox.showerror("Error", "New passwords do not match")
+        else:
+            with open(config.ADMIN_DIR, 'w') as f:
+                f.write(f"{admin_username}\n{new_password_val}\n")
+            messagebox.showinfo("Success", "Password changed successfully")
+
+        change_pass_window.withdraw()
+        change_pass_window.grab_release()
+
+    # Gán lại command cho nút xác nhận
+    change_pass_window.verify_button.config(command=do_change_password)
+
+
+
 def SaveProfile():
     """
     Save employee profile (ID, name, image path, and embedding) after admin verification.
 
     Validates inputs, checks for duplicate IDs, and saves data to CSV after admin authentication.
     """
+
+
     id_value = txt.get()
     name_value = txt2.get()
     img_path = os.path.join(config.EMPLOYEE_DIR, f"{id_value}.jpg")
-    embedding_path = os.path.join(config.EMPLOYEE_EMBEDDING, f"{id_value}.npy")
-
-    if check_id_exists(id_value):
-        messagebox.showerror("Error", f"ID {id_value} already exists in the system")
+    if not validate_input(id_value, name_value):
         return
+    if not os.path.exists(img_path):
+        messagebox.showerror("Error", f"Image for ID {id_value} does not exist. Please capture the image first.")
+        return
+    else:
+        embedding_path = os.path.join(config.EMPLOYEE_EMBEDDING, f"{id_value}.npy")
 
     def verify_admin():
         """Verify admin credentials and save employee data if valid."""
-        username = entry_username.get().strip()
-        password = entry_password.get().strip()
 
-        if username == "admin" and password == "admin123":
+        if check_admin_account():
             with open(config.EMPLOYEE_CSV, 'a', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerow([id_value, name_value, img_path, embedding_path])
             messagebox.showinfo("Success", f"Saved profile for ID: {id_value}, Name: {name_value}")
-            admin_window.destroy()
+
+            txt.delete(0, 'end')
+            txt2.delete(0, 'end')
+
+            entry_username.delete(0, 'end')
+            entry_password.delete(0, 'end')
+
+            admin_window.withdraw()
+            admin_window.grab_release()
         else:
             messagebox.showerror("Error", "Invalid username or password")
 
@@ -288,12 +370,12 @@ window = tkinter.Tk()
 window.title("Face Recognition Based Attendance System")
 window.geometry("1280x720")
 window.resizable(True, True)
-window.configure(background='#ffb8c6')
+window.configure(background='#99ffcc')
 
 # Admin Window
 admin_window = tkinter.Toplevel(window)
 admin_window.title("Đăng nhập Admin")
-admin_window.geometry("300x500")
+admin_window.geometry("300x300")
 admin_window.withdraw()
 
 tkinter.Label(admin_window, text="Username:", width=20, height=1, fg="black", bg="white", font=('times', 17, ' bold ')).pack(pady=10)
@@ -301,12 +383,37 @@ entry_username = tkinter.Entry(admin_window, width=32, fg="black", bg="#e1f2f2",
 entry_username.pack()
 
 tkinter.Label(admin_window, text="Password:", width=20, height=1, fg="black", bg="white", font=('times', 17, ' bold ')).pack(pady=10)
-entry_password = tkinter.Entry(admin_window, width=32, fg="black", bg="#e1f2f2", highlightcolor="#00aeff", highlightthickness=3, font=('times', 15, ' bold '))
+entry_password = tkinter.Entry(admin_window, width=32, fg="black", bg="#e1f2f2", highlightcolor="#00aeff", highlightthickness=3, font=('times', 15, ' bold '),show= ".")
 entry_password.pack()
 
 # Create verify button without assigning command immediately
 admin_window.verify_button = tkinter.Button(admin_window, text="Xác nhận")
 admin_window.verify_button.pack(pady=20)
+
+change_pass_btn = tkinter.Button(admin_window, text="Đổi mật khẩu",command=change_password)
+change_pass_btn.pack(pady=10)
+
+# Change Password Window
+change_pass_window = tkinter.Toplevel(admin_window)
+change_pass_window.title("Đổi mật khẩu Admin")
+change_pass_window.geometry("300x300")
+change_pass_window.withdraw()
+
+tkinter.Label(change_pass_window, text="Old Password:", width=20, height=1, fg="black", bg="white", font=('times', 17, ' bold ')).pack(pady=10)
+old_pass = tkinter.Entry(change_pass_window, width=32, fg="black", bg="#e1f2f2", highlightcolor="#00aeff", highlightthickness=3, font=('times', 15, ' bold '))
+old_pass.pack()
+
+tkinter.Label(change_pass_window, text="New Password:", width=20, height=1, fg="black", bg="white", font=('times', 17, ' bold ')).pack(pady=10)
+new_pass = tkinter.Entry(change_pass_window, width=32, fg="black", bg="#e1f2f2", highlightcolor="#00aeff", highlightthickness=3, font=('times', 15, ' bold '))
+new_pass.pack()
+
+tkinter.Label(change_pass_window, text="Confirm Password:", width=20, height=1, fg="black", bg="white", font=('times', 17, ' bold ')).pack(pady=10)
+confirm_pass = tkinter.Entry(change_pass_window, width=32, fg="black", bg="#e1f2f2", highlightcolor="#00aeff", highlightthickness=3, font=('times', 15, ' bold '))
+confirm_pass.pack()
+
+change_pass_window.verify_button = tkinter.Button(change_pass_window, text="Xác nhận")
+change_pass_window.verify_button.pack(pady=20)
+
 
 # Help menubar
 menubar = Menu(window)
@@ -366,16 +473,6 @@ message.place(x=7, y=500)
 # Attendance frame
 lbl3 = tkinter.Label(frame2, text="Attendance Table", width=20, fg="black", bg="white", height=1, font=('times', 17, ' bold '))
 lbl3.place(x=100, y=115)
-
-# Display total registrations
-res = 0
-if os.path.isfile(config.STUDENT_DETAILS_CSV):
-    with open(config.STUDENT_DETAILS_CSV, 'r') as csvFile1:
-        reader1 = csv.reader(csvFile1)
-        for l in reader1:
-            res = res + 1
-    res = (res // 2) - 1
-message.configure(text='Total Registrations : ' + str(res))
 
 # Buttons
 clearButton = tkinter.Button(frame1, text="Clear", command=clear, fg="white", bg="#13059c", width=11, activebackground="white", font=('times', 12, ' bold '))

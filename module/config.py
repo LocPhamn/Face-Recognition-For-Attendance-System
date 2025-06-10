@@ -9,7 +9,7 @@ ATTENDANCE_REPORT = r"D:\Python plus\AI_For_CV\dataset\face_dataset\attendance\r
 EMPLOYEE_CSV = r"D:\Python plus\AI_For_CV\dataset\face_dataset\employee.csv"
 EMPLOYEE_DIR = r"D:\Python plus\AI_For_CV\dataset\face_dataset\attendance_face"
 EMPLOYEE_EMBEDDING = r"D:\Python plus\AI_For_CV\dataset\face_dataset\attendance_embedding"
-STUDENT_DETAILS_CSV = r"StudentDetails\StudentDetails.csv"
+ADMIN_DIR = r"D:\Python plus\AI_For_CV\dataset\face_dataset\admin.txt"
 
 # Model input image size
 IMAGE_SIZE = (224, 224)
