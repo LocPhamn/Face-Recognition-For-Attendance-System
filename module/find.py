@@ -31,6 +31,7 @@ def DatabaseEmbedding(data_dir,model):
 def findPerson(img):
     min_distant = 1
     threshold = config.THRESHOLD
+    id = None
     identity = None
     matched_embedding = None
 
@@ -45,10 +46,11 @@ def findPerson(img):
             if dist < min_distant:
                 min_distant = dist
                 identity = row[1]
+                id = row[0]
 
 
     if min_distant <= threshold and identity is not None:
-        return identity, min_distant
+        return id,identity, min_distant
     else:
-        return "unknown", min_distant
+        return None,"unknown", min_distant
 

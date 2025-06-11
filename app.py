@@ -68,14 +68,14 @@ def validate_input(entry_id, entry_name):
 
     return True
 
-def load_attendance_to_table():
+def load_attendance_to_table(data_path):
     """
     Load today's attendance data from CSV and display in the attendance table.
 
     Displays error if the CSV file for the current date does not exist.
     """
     today = datetime.now().strftime("%Y-%m-%d")
-    csv_filepath = os.path.join(config.ATTENDANCE_REPORT, f"{today}.csv")
+    csv_filepath = os.path.join(data_path, f"{today}.csv")
 
     if not os.path.exists(csv_filepath):
         messagebox.showerror("Error", f"Attendance file {today}.csv not found")
@@ -104,7 +104,7 @@ def async_preprocess(frame, embedding_model):
         real_face, anti_face_conf = anti_spoofing_model.analyze(frame, facial_area)
     processing = False
 
-def check_id_exists(id_value):
+def check_id_exists(id_value, data_path):
     """
     Check if an employee ID already exists in the employee CSV file.
 
@@ -116,7 +116,7 @@ def check_id_exists(id_value):
     """
     if not os.path.exists(config.EMPLOYEE_CSV):
         return False
-    with open(config.EMPLOYEE_CSV, 'r', newline='') as f:
+    with open(data_path, 'r', newline='') as f:
         reader = csv.reader(f)
         next(reader, None)  # Skip header
         for row in reader:
@@ -260,7 +260,7 @@ def TakeImages():
     id_value = txt.get()
     name_value = txt2.get()
 
-    if validate_input(id_value, name_value) and not check_id_exists(id_value):
+    if validate_input(id_value, name_value) and not check_id_exists(id_value,config.EMPLOYEE_CSV):
         cap = cv2.VideoCapture(0)
         while cap.isOpened():
             ret, frame = cap.read()
@@ -288,16 +288,25 @@ def TakeImages():
     else:
         messagebox.showerror("Error", "ID already exists in database")
 
-def TrackImages():
+def Attendance(type_="checkin"):
     """
     Track and record employee attendance using face recognition.
-
-    Captures video, processes frames for face recognition, verifies identity,
-    and logs attendance in a CSV file. Displays results in the attendance table.
+    type_: "checkin" hoặc "checkout"
     """
     today = datetime.now()
     threshold = config.THRESHOLD
-    os.makedirs(config.ATTENDANCE_REPORT, exist_ok=True)
+
+    # Chọn thư mục và tên cột theo loại điểm danh
+    if type_ == "checkin":
+        report_dir = config.ATTENDANCE_REPORT
+        time_col = "checkin"
+        success_msg = "Check in success."
+    else:
+        report_dir = config.CHECKOUT_REPORT
+        time_col = "checkout"
+        success_msg = "Checked out success."
+
+    os.makedirs(report_dir, exist_ok=True)
 
     # Clear attendance table
     for item in tb.get_children():
@@ -305,21 +314,23 @@ def TrackImages():
 
     # Initialize today's attendance CSV
     csv_filename = today.strftime("%Y-%m-%d") + ".csv"
-    csv_filepath = os.path.join(config.ATTENDANCE_REPORT, csv_filename)
+    csv_filepath = os.path.join(report_dir, csv_filename)
     if not os.path.exists(csv_filepath):
         with open(csv_filepath, 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['id', 'name', 'date', 'time'])
+            writer.writerow(['id', 'name', 'date', time_col])
         print(f"Created CSV file: {csv_filepath}")
 
     # Start video capture
     cap = cv2.VideoCapture(0)
     frame_id = 0
     frame_interval = 30
-    people = set()
-    next_id = 0
+
+    start_time = time.time()
+    time_out = 10
 
     while cap.isOpened():
+        current_time = time.time()
         ret, frame = cap.read()
         if not ret:
             print(f"Error with frame {frame_id}")
@@ -332,17 +343,29 @@ def TrackImages():
 
         # Verify and log attendance
         if embedding_result is not None and real_face:
-            identity, distant = find.findPerson(embedding_result)
+            id, identity, distant = find.findPerson(embedding_result)
             scale = utils.distance_to_similarity(distant)
-            if distant <= threshold and identity not in people:
-                people.add(identity)
-                checkin_date = today.strftime("%d-%m-%Y")
-                checkin_time = today.strftime("%H:%M:%S")
-                attendance = [str(next_id), identity, checkin_date, checkin_time]
-                with open(csv_filepath, 'a', newline='') as f:
-                    writer = csv.writer(f)
-                    writer.writerow(attendance)
-                next_id += 1
+            # Điều kiện cho checkin/checkout
+            if (current_time - start_time >= time_out/2):
+                if type_ == "checkin":
+                    can_write = distant <= threshold and not check_id_exists(id, csv_filepath)
+                else:
+                    # Chỉ cho checkout nếu đã checkin và chưa checkout
+                    checkin_file = os.path.join(config.ATTENDANCE_REPORT, csv_filename)
+                    can_write = (distant <= threshold and not check_id_exists(id, csv_filepath)
+                                 and check_id_exists(id, checkin_file))
+                if can_write :
+                    date_str = today.strftime("%d-%m-%Y")
+                    time_str = today.strftime("%H:%M:%S")
+                    attendance = [str(id), identity, date_str, time_str]
+                    with open(csv_filepath, 'a', newline='') as f:
+                        writer = csv.writer(f)
+                        writer.writerow(attendance)
+                    messagebox.showinfo("Success", success_msg)
+                    break
+                elif check_id_exists(id, csv_filepath):
+                    messagebox.showinfo("Info", f"ID {id} already {type_}ed today.")
+                    break
 
             # Visualize results
             color = (0, 255, 0) if distant <= threshold else (0, 0, 255)
@@ -350,18 +373,24 @@ def TrackImages():
             cv2.putText(frame, f"Match: {scale:.1f}%", (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
             if face_bb:
                 cv2.rectangle(frame, (face_bb.x, face_bb.y), (face_bb.x + face_bb.w, face_bb.y + face_bb.h), color, 2)
-        else:
+            cv2.imshow("img", frame)
+            if current_time - start_time > time_out:
+                break
+
+        elif embedding_result is not None and not real_face:
             color = (0, 0, 255)
             cv2.putText(frame, "Fake Face", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
             cv2.putText(frame, f"Match: {anti_face_conf:.1f}%", (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
             if face_bb:
                 cv2.rectangle(frame, (face_bb.x, face_bb.y), (face_bb.x + face_bb.w, face_bb.y + face_bb.h), color, 2)
+            cv2.imshow("img", frame)
+            messagebox.showinfo("Error", "Fake Face Detected!")
+            break
 
-        cv2.imshow("img", frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
-    load_attendance_to_table()
+    load_attendance_to_table(report_dir)
     cap.release()
     cv2.destroyAllWindows()
 
@@ -484,8 +513,11 @@ takeImg.place(x=30, y=350, relwidth=0.89)
 trainImg = tkinter.Button(frame1, text="Save Profile", fg="black", command=SaveProfile, bg="#00aeff", width=34, height=1, activebackground="white", font=('times', 16, ' bold '))
 trainImg.place(x=30, y=430, relwidth=0.89)
 
-trackImg = tkinter.Button(frame2, text="Take Attendance", command=TrackImages, fg="black", bg="#00aeff", height=1, activebackground="white", font=('times', 16, ' bold '))
-trackImg.place(x=30, y=60, relwidth=0.89)
+trackImg = tkinter.Button(frame2, text="Checkin", command=lambda: Attendance("checkin"), fg="black", bg="#00aeff", height=1, activebackground="white", font=('times', 16, ' bold '))
+trackImg.place(x=30, y=60, relwidth=0.44)
+
+checkoutBtn = tkinter.Button(frame2, text="Checkout", command=lambda: Attendance("checkout"), fg="black", bg="#00aeff", height=1, activebackground="white", font=('times', 16, ' bold '))
+checkoutBtn.place(relx=0.52, x=0, y=60, relwidth=0.44)
 
 quitWindow = tkinter.Button(frame2, text="Quit", command=window.destroy, fg="white", bg="#13059c", width=35, height=1, activebackground="white", font=('times', 16, ' bold '))
 quitWindow.place(x=30, y=450, relwidth=0.89)
@@ -495,16 +527,16 @@ style = ttk.Style()
 style.configure("mystyle.Treeview", highlightthickness=0, bd=0, font=('Calibri', 11))  # Modify the font of the body
 style.configure("mystyle.Treeview.Heading", font=('times', 13, 'bold'))  # Modify the font of the headings
 style.layout("mystyle.Treeview", [('mystyle.Treeview.treearea', {'sticky': 'nswe'})])  # Remove the borders
-tb = ttk.Treeview(frame2, height=13, columns=('name', 'date', 'time'), style="mystyle.Treeview")
+tb = ttk.Treeview(frame2, height=13, columns=('name', 'date', 'checkin','checkout'), style="mystyle.Treeview")
 tb.column('#0', width=82)
 tb.column('name', width=130)
 tb.column('date', width=133)
-tb.column('time', width=133)
+tb.column('checkin', width=133)
 tb.grid(row=2, column=0, padx=(0, 0), pady=(150, 0), columnspan=4)
 tb.heading('#0', text='ID')
 tb.heading('name', text='NAME')
 tb.heading('date', text='DATE')
-tb.heading('time', text='TIME')
+tb.heading('checkin', text='TIME')
 
 # Scrollbar
 scroll = ttk.Scrollbar(frame2, orient='vertical', command=tb.yview)
