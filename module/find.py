@@ -8,7 +8,7 @@ from deepface.modules import detection, preprocessing
 from tensorflow.tools.docs.doc_controls import header
 
 from model.classification_model import FacialRecognitionModel
-from module import config, utils
+from module import config, utils, database
 
 face_model = FacialRecognitionModel()
 model = face_model.get_embedding_model()
@@ -35,18 +35,19 @@ def findPerson(img):
     identity = None
     matched_embedding = None
 
-    with (open(r"D:\Python plus\AI_For_CV\dataset\face_dataset\employee.csv", "r") as f):
-        # db_embeddings =
-        reader = csv.reader(f)
-        next(reader, None)  # Bỏ qua tiêu đề
-        query_embedding = img
-        for row in reader:
-            embedding_img = np.load(row[3])
-            dist = np.linalg.norm(query_embedding - embedding_img)
-            if dist < min_distant:
-                min_distant = dist
-                identity = row[1]
-                id = row[0]
+    employees = database.read_employees()
+    if not employees:
+        print("Không có nhân viên nào trong cơ sở dữ liệu.")
+        return None, "unknown", min_distant
+
+    for employee in employees:
+        embedding_img = np.load(employee[3])
+        dist = np.linalg.norm(img - embedding_img)
+        if dist < min_distant:
+            min_distant = dist
+            identity = employee[1]
+            id = employee[0]
+
 
 
     if min_distant <= threshold and identity is not None:

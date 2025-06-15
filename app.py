@@ -11,9 +11,11 @@ from tkinter import messagebox as mess
 import cv2
 import numpy as np
 from deepface.models.spoofing.FasNet import Fasnet
-from model.classification_model import FacialRecognitionModel
-from module import config, find, utils
 
+from classes.attendance import Attendances
+from classes.employee import Employee
+from model.classification_model import FacialRecognitionModel
+from module import config, find, utils, database
 # Initialize models
 face_model = FacialRecognitionModel()
 embedding_model = face_model.get_embedding_model()
@@ -134,16 +136,11 @@ def check_admin_account():
     username = entry_username.get().strip()
     password = entry_password.get().strip()
 
-    if not os.path.exists(config.ADMIN_DIR):
-        return False
-    with open(config.ADMIN_DIR, 'r') as f:
-        lines = f.readlines()
-        if len(lines) < 2:
-            return False
-        admin_username = lines[0].strip()
-        admin_password = lines[1].strip()
-        if username == admin_username and password == admin_password:
-            return True
+    admin = database.get_admin()
+    if username == admin.username and password == admin.password:
+        return True
+    else:
+        messagebox.showerror("Error", "Invalid admin credentials")
         return False
 
 def change_password():
@@ -196,7 +193,24 @@ def change_password():
     # Gán lại command cho nút xác nhận
     change_pass_window.verify_button.config(command=do_change_password)
 
+def Save(name_value=None, img_path=None, embedding_path=None, id_value=None):
+    """Verify admin credentials and save employee data if valid."""
 
+    if check_admin_account():
+        employee = Employee(name_value, img_path, embedding_path, int(id_value))
+        database.create_employee(employee)
+        messagebox.showinfo("Success", f"Saved profile for ID: {id_value}, Name: {name_value}")
+
+        txt.delete(0, 'end')
+        txt2.delete(0, 'end')
+
+        entry_username.delete(0, 'end')
+        entry_password.delete(0, 'end')
+
+        admin_window.withdraw()
+        admin_window.grab_release()
+    else:
+        messagebox.showerror("Error", "Invalid username or password")
 
 def SaveProfile():
     """
@@ -204,7 +218,6 @@ def SaveProfile():
 
     Validates inputs, checks for duplicate IDs, and saves data to CSV after admin authentication.
     """
-
 
     id_value = txt.get()
     name_value = txt2.get()
@@ -217,27 +230,9 @@ def SaveProfile():
     else:
         embedding_path = os.path.join(config.EMPLOYEE_EMBEDDING, f"{id_value}.npy")
 
-    def verify_admin():
-        """Verify admin credentials and save employee data if valid."""
 
-        if check_admin_account():
-            with open(config.EMPLOYEE_CSV, 'a', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow([id_value, name_value, img_path, embedding_path])
-            messagebox.showinfo("Success", f"Saved profile for ID: {id_value}, Name: {name_value}")
 
-            txt.delete(0, 'end')
-            txt2.delete(0, 'end')
-
-            entry_username.delete(0, 'end')
-            entry_password.delete(0, 'end')
-
-            admin_window.withdraw()
-            admin_window.grab_release()
-        else:
-            messagebox.showerror("Error", "Invalid username or password")
-
-    admin_window.verify_button.config(command=verify_admin)
+    admin_window.verify_button.config(command=lambda: Save(name_value,img_path, embedding_path, id_value))
     admin_window.deiconify()
     admin_window.grab_set()
 
@@ -248,19 +243,11 @@ def TakeImages():
     Validates inputs, checks for duplicate IDs, captures image on 's' key press,
     and saves both the image and its embedding.
     """
-    os.makedirs(config.EMPLOYEE_DIR, exist_ok=True)
-
-    # Initialize employee CSV if it doesn't exist
-    if not os.path.exists(config.EMPLOYEE_CSV):
-        with open(config.EMPLOYEE_CSV, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(['id', 'name', 'img_path', 'embedding'])
-        print(f"Created CSV file: {config.EMPLOYEE_CSV}")
 
     id_value = txt.get()
     name_value = txt2.get()
 
-    if validate_input(id_value, name_value) and not check_id_exists(id_value,config.EMPLOYEE_CSV):
+    if validate_input(id_value, name_value) and not database.check_employee_exists(id_value):
         cap = cv2.VideoCapture(0)
         while cap.isOpened():
             ret, frame = cap.read()
@@ -345,27 +332,33 @@ def Attendance(type_="checkin"):
         if embedding_result is not None and real_face:
             id, identity, distant = find.findPerson(embedding_result)
             scale = utils.distance_to_similarity(distant)
-            # Điều kiện cho checkin/checkout
+
             if (current_time - start_time >= time_out/2):
+                if identity == "unknown":
+                    messagebox.showinfo("Error", "Unknown face detected!")
+                    break
                 if type_ == "checkin":
-                    can_write = distant <= threshold and not check_id_exists(id, csv_filepath)
-                else:
-                    # Chỉ cho checkout nếu đã checkin và chưa checkout
-                    checkin_file = os.path.join(config.ATTENDANCE_REPORT, csv_filename)
-                    can_write = (distant <= threshold and not check_id_exists(id, csv_filepath)
-                                 and check_id_exists(id, checkin_file))
-                if can_write :
-                    date_str = today.strftime("%d-%m-%Y")
-                    time_str = today.strftime("%H:%M:%S")
-                    attendance = [str(id), identity, date_str, time_str]
-                    with open(csv_filepath, 'a', newline='') as f:
-                        writer = csv.writer(f)
-                        writer.writerow(attendance)
-                    messagebox.showinfo("Success", success_msg)
-                    break
-                elif check_id_exists(id, csv_filepath):
-                    messagebox.showinfo("Info", f"ID {id} already {type_}ed today.")
-                    break
+                    can_write = distant <= threshold and not database.check_id_attended_today(id)
+                    if can_write:
+                        print(id)
+                        attendance = Attendances(id, today.strftime("%Y-%m-%d"), today.strftime("%H:%M:%S"))
+                        database.check_in(attendance)
+                        database.check_late(attendance.employee_id,attendance.check_in)
+                        messagebox.showinfo("Success", success_msg)
+                        break
+                    else:
+                        messagebox.showinfo("Error", "Employee has already checked in today")
+                        break
+                elif type_ == "checkout":
+                    can_write = distant <= threshold and database.check_id_attended_today(id) and not database.check_id_out_today(id)
+                    if can_write:
+                        database.check_out(id,today.strftime("%Y-%m-%d"),today.strftime("%H:%M:%S"))
+                        database.check_early(id, today.strftime("%H:%M:%S"))
+                        messagebox.showinfo("Success", success_msg)
+                        break
+                    else:
+                        messagebox.showinfo("Error", "Employee has not checked in today or has already checked out")
+                        break
 
             # Visualize results
             color = (0, 255, 0) if distant <= threshold else (0, 0, 255)
@@ -384,8 +377,9 @@ def Attendance(type_="checkin"):
             if face_bb:
                 cv2.rectangle(frame, (face_bb.x, face_bb.y), (face_bb.x + face_bb.w, face_bb.y + face_bb.h), color, 2)
             cv2.imshow("img", frame)
-            messagebox.showinfo("Error", "Fake Face Detected!")
-            break
+            if (current_time - start_time >= time_out/2):
+                messagebox.showinfo("Error", "Fake Face Detected!")
+                break
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
@@ -393,6 +387,108 @@ def Attendance(type_="checkin"):
     load_attendance_to_table(report_dir)
     cap.release()
     cv2.destroyAllWindows()
+
+def OpenAdminWindow():
+    """
+    Open the admin login window and set the command for the verify button.
+    """
+    admin_window.deiconify()
+    admin_window.grab_set()
+
+    def AdminWindow():
+        if check_admin_account():
+            admin_window.withdraw()
+            admin_window.grab_release()
+
+            txt.delete(0, 'end')
+            txt2.delete(0, 'end')
+
+            entry_username.delete(0, 'end')
+            entry_password.delete(0, 'end')
+
+            management_window.deiconify()
+            management_window.grab_set()
+        else:
+            messagebox.showerror("Error", "Invalid username or password")
+
+    # Set the command for the verify button
+    admin_window.verify_button.config(command=AdminWindow)
+def OpenEditWindow():
+    selected = tree.focus()
+    if not selected:
+        messagebox.showwarning("Chọn dòng", "Vui lòng chọn một nhân viên để sửa.")
+        return
+
+    values = tree.item(selected, 'values')
+    emp_id = values[0]
+
+    # Tạo cửa sổ mới
+    edit_win = tkinter.Toplevel(management_window)
+    edit_win.title(f"Chỉnh sửa nhân viên ID {emp_id}")
+    edit_win.geometry("400x200")
+
+    # Label và Entry cho từng trường
+    tkinter.Label(edit_win, text="Tên:").grid(row=0, column=0, padx=10, pady=5, sticky='e')
+    entry_name = tkinter.Entry(edit_win)
+    entry_name.insert(0, values[1])
+    entry_name.grid(row=0, column=1, padx=10, pady=5, sticky='w')
+
+    tkinter.Label(edit_win, text="Ảnh (đường dẫn):").grid(row=1, column=0, padx=10, pady=5, sticky='e')
+    entry_img = tkinter.Entry(edit_win)
+    entry_img.insert(0, values[2])
+    entry_img.grid(row=1, column=1, padx=10, pady=5, sticky='w')
+
+    tkinter.Label(edit_win, text="Embedding:").grid(row=2, column=0, padx=10, pady=5, sticky='e')
+    entry_embed = tkinter.Entry(edit_win)
+    entry_embed.insert(0, values[3])
+    entry_embed.grid(row=2, column=1, padx=10, pady=5, sticky='w')
+
+    btn_update = tkinter.Button(edit_win, text="Save", width=12,
+                                command=lambda: database.update_employee(emp_id, entry_name.get(), entry_img.get(), entry_embed.get()))
+    btn_update.grid(row=3, column=0, padx=10, pady=15)
+
+    btn_delete = tkinter.Button(edit_win, text="Delete", width=12, command=None)
+    btn_delete.grid(row=3, column=1, padx=10, pady=15)
+
+def load_employee_data():
+    """
+    Load employee data from CSV and populate the Treeview.
+    """
+    try:
+        result = database.read_employees()
+        for row in result:
+            tree.insert('', 'end', values=(row[0], row[1], row[2], row[3]))
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to load employee data: {e}")
+        return
+
+def load_attendance_data():
+    """
+    Load employee data from CSV and populate the Treeview.
+    """
+    try:
+        result = database.get_attendance_by_date(datetime.now().strftime("%Y-%m-%d"))
+        for row in result:
+            employee = database.get_employee_by_id(row[1])
+            tb.insert('', 'end', values=(row[0], employee.name, row[2], row[3],row[4]))
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to load attendance data: {e}")
+        return
+
+def load_violation_data():
+    """
+    Load employee data from CSV and populate the Treeview.
+    """
+    try:
+        result = database.get_violation_today()
+        for violation in result:
+            employee = database.get_employee_by_id(violation[1])
+            policy = database.get_policy_by_id(violation[2])
+            violation_tree.insert('', 'end', values=(violation[0], employee.name, policy.name,violation[3],violation[4],violation[5]))
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to load violation data: {e}")
+        return
+
 
 # Front End
 window = tkinter.Tk()
@@ -420,7 +516,7 @@ admin_window.verify_button = tkinter.Button(admin_window, text="Xác nhận")
 admin_window.verify_button.pack(pady=20)
 
 change_pass_btn = tkinter.Button(admin_window, text="Đổi mật khẩu",command=change_password)
-change_pass_btn.pack(pady=10)
+change_pass_btn.pack(pady=5)
 
 # Change Password Window
 change_pass_window = tkinter.Toplevel(admin_window)
@@ -443,6 +539,93 @@ confirm_pass.pack()
 change_pass_window.verify_button = tkinter.Button(change_pass_window, text="Xác nhận")
 change_pass_window.verify_button.pack(pady=20)
 
+# Management Window
+management_window = tkinter.Tk()
+management_window.title("Management Window")
+management_window.geometry("800x450")
+management_window.resizable(True, True)
+management_window.configure(background='#99ffcc')
+management_window.withdraw()  # Start hidden
+
+notebook = ttk.Notebook(management_window)
+notebook.pack(fill='both', expand=True)
+
+tab_employee = ttk.Frame(notebook)
+notebook.add(tab_employee, text='Quản lý nhân viên')
+tab_attendance = ttk.Frame(notebook)
+notebook.add(tab_attendance, text='Chấm công hôm nay')
+violation_tab = ttk.Frame(notebook)
+notebook.add(violation_tab, text="Vi phạm hôm nay")
+
+lbl_nv = ttk.Label(tab_employee, text="Danh sách nhân viên", font=('Arial', 14))
+lbl_nv.pack(pady=10)
+
+# Config Treeview for employee data
+columns = ("id", "name", "img", "embedding")
+tree = ttk.Treeview(tab_employee, columns=columns, show="headings", height=10)
+
+# Name the columns
+tree.heading("id", text="ID")
+tree.heading("name", text="Tên")
+tree.heading("img", text="Ảnh (đường dẫn)")
+tree.heading("embedding", text="Embedding")
+
+# Set column widths
+tree.column("id", width=50)
+tree.column("name", width=150)
+tree.column("img", width=200)
+tree.column("embedding", width=400)
+tree.pack(pady=10)
+
+load_employee_data()
+
+btn_edit = ttk.Button(tab_employee, text="Edit", command=OpenEditWindow)
+btn_edit.pack(pady=10)
+
+
+lbl_cc = ttk.Label(tab_attendance, text="Chấm công nhân viên", font=('Arial', 14))
+lbl_cc.pack(pady=10)
+
+# Config Treeview for attendance data
+columns_attendance = ("id", "name", "date", "checkin","checkout")
+tb = ttk.Treeview(tab_attendance, columns=columns_attendance, show="headings", height=10)
+
+# Name the columns
+tb.heading("id", text="ID")
+tb.heading("name", text="Tên")
+tb.heading("date", text="Ngày")
+tb.heading("checkin", text="Checkin")
+tb.heading("checkout", text="Checkout")
+
+# Set column widths
+tb.column("id", width=50)
+tb.column("name", width=150)
+tb.column("date", width=100)
+tb.column("checkin", width=100)
+tb.column("checkout", width=100)
+tb.pack(pady=10)
+
+load_attendance_data()
+
+columns_violation = ("id", "name","type","minutes", "deduction","date")
+violation_tree = ttk.Treeview(violation_tab, columns=columns_violation, show="headings")
+violation_tree.heading("id", text="ID")
+violation_tree.heading("name", text="Tên người vi phạm")
+violation_tree.heading("type", text="Loại vi phạm")
+violation_tree.heading("minutes", text="Số phút vi phạm")
+violation_tree.heading("deduction", text="Số tiền phạt")
+violation_tree.heading("date", text="Ngày vi phạm")
+violation_tree.pack(fill="both", expand=True)
+
+#Set column widths
+violation_tree.column("id", width=50)
+violation_tree.column("name", width=150)
+violation_tree.column("type", width=100)
+violation_tree.column("minutes", width=100)
+violation_tree.column("deduction", width=100)
+violation_tree.column("date", width=100)
+
+load_violation_data()
 
 # Help menubar
 menubar = Menu(window)
@@ -510,8 +693,11 @@ clearButton.place(x=55, y=230, relwidth=0.29)
 takeImg = tkinter.Button(frame1, text="Take Images", command=TakeImages, fg="black", bg="#00aeff", width=34, height=1, activebackground="white", font=('times', 16, ' bold '))
 takeImg.place(x=30, y=350, relwidth=0.89)
 
-trainImg = tkinter.Button(frame1, text="Save Profile", fg="black", command=SaveProfile, bg="#00aeff", width=34, height=1, activebackground="white", font=('times', 16, ' bold '))
-trainImg.place(x=30, y=430, relwidth=0.89)
+trainImg = tkinter.Button(frame1, text="Save Profile", fg="black", command=SaveProfile, bg="#00aeff", width=17, height=1, activebackground="white", font=('times', 16, ' bold '))
+trainImg.place(x=30, y=430)
+
+manageBtn = tkinter.Button(frame1, text="Manage", fg="black", bg="#00aeff",command=OpenAdminWindow ,width=17, height=1, activebackground="white", font=('times', 16, ' bold '))
+manageBtn.place(x=270, y=430)
 
 trackImg = tkinter.Button(frame2, text="Checkin", command=lambda: Attendance("checkin"), fg="black", bg="#00aeff", height=1, activebackground="white", font=('times', 16, ' bold '))
 trackImg.place(x=30, y=60, relwidth=0.44)
@@ -519,7 +705,7 @@ trackImg.place(x=30, y=60, relwidth=0.44)
 checkoutBtn = tkinter.Button(frame2, text="Checkout", command=lambda: Attendance("checkout"), fg="black", bg="#00aeff", height=1, activebackground="white", font=('times', 16, ' bold '))
 checkoutBtn.place(relx=0.52, x=0, y=60, relwidth=0.44)
 
-quitWindow = tkinter.Button(frame2, text="Quit", command=window.destroy, fg="white", bg="#13059c", width=35, height=1, activebackground="white", font=('times', 16, ' bold '))
+quitWindow = tkinter.Button(frame2, text="Quit", command= lambda: (window.destroy(),management_window.destroy()), fg="white", bg="#13059c", width=35, height=1, activebackground="white", font=('times', 16, ' bold '))
 quitWindow.place(x=30, y=450, relwidth=0.89)
 
 # Attendance table

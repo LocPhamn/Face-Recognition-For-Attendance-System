@@ -3,7 +3,7 @@ import os.path
 import tensorflow as tf
 from deepface.modules import preprocessing
 from matplotlib import pyplot as plt
-from script.face_recognition.model.classification_model import FacialRecognitionModel
+from model.classification_model import FacialRecognitionModel
 
 AUTOTUNE = tf.data.AUTOTUNE
 
