@@ -612,7 +612,7 @@ violation_tree.column("minutes", width=100)
 violation_tree.column("deduction", width=100)
 violation_tree.column("date", width=100)
 
-quit_btn = tkinter.Button(management_window, text="Quit", fg="black", bg="#ff4d4d", width=17, height=1, activebackground="white", font=('times', 16, ' bold '), command=management_window.withdraw)
+quit_btn = tkinter.Button(management_window, text="Quit", fg="black", bg="#ff4d4d", width=17, height=1, activebackground="white", font=('times', 16, ' bold '), command=lambda:(management_window.withdraw(),management_window.grab_release()))
 quit_btn.pack(pady=10)
 
 # Help menubar

@@ -222,7 +222,6 @@ def check_late(emp_id,check_in_time):
     result = cursor.fetchone()
     cursor.fetchall()  
     policy = Policy(result[1], result[2], result[3], result[0]) if result else None
-    print(policy.hours)
     if policy:
         check_in_time = datetime.strptime(check_in_time, "%H:%M:%S")
         policy_hours = datetime.strptime(str(policy.hours), "%H:%M:%S")
@@ -234,26 +233,30 @@ def check_late(emp_id,check_in_time):
         print("✅ Đã thêm vi phạm.")
         cursor.close()
 
-def check_early(emp_id,check_out_time):
+def check_early(emp_id, check_out_time):
     """
     Check if the employee leaves early based on check-out time and insert a violation if applicable.
     """
-    today= datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now().strftime("%Y-%m-%d")
     con = connect_db()
     cursor = con.cursor()
     cursor.execute("SELECT * FROM policy WHERE hours > %s", (check_out_time,))
     result = cursor.fetchone()
+    cursor.fetchall() 
     policy = Policy(result[1], result[2], result[3], result[0]) if result else None
     if policy:
         check_out_time = datetime.strptime(check_out_time, "%H:%M:%S")
-        policy_hours = datetime.strptime(policy.hours, "%H:%M:%S")
+        policy_hours = datetime.strptime(str(policy.hours), "%H:%M:%S")
         late_minutes = (policy_hours - check_out_time).total_seconds() / 60
         deduction = policy.amount * late_minutes
         date = today
-        cursor.execute( "INSERT INTO violation (employee_id, policy_id, late_minutes, deduction, date) VALUES (%s, %s, %s, %s, %s)", params=(emp_id, policy.id, late_minutes, deduction, date))
+        cursor.execute(
+            "INSERT INTO violation (employee_id, policy_id, late_minutes, deduction, date) VALUES (%s, %s, %s, %s, %s)",
+            (emp_id, policy.id, late_minutes, deduction, date)
+        )
         con.commit()
         print("✅ Đã thêm vi phạm.")
-        cursor.close()
+    cursor.close()
 
 
 def get_violation_today():
