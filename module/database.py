@@ -8,7 +8,7 @@ from classes.policy import Policy
 from classes.violation import Violation
 
 
-# Tạo kết nối
+# Create database connection
 def connect_db():
     try:
         return mysql.connector.connect(
@@ -21,6 +21,9 @@ def connect_db():
         print(f"Lỗi: {err}")
 
 def create_employee(employee: employee.Employee):
+    """
+    Insert a new employee into the database.
+    """
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute(
@@ -33,6 +36,9 @@ def create_employee(employee: employee.Employee):
     conn.close()
 
 def read_employees():
+    """
+    Retrieve all employees from the database.
+    """
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM employee")
@@ -40,6 +46,9 @@ def read_employees():
     return result
 
 def get_employee_by_id(emp_id):
+    """
+    Retrieve an employee by their ID from the database.
+    """
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM employee WHERE employee_id = %s", (emp_id,))
@@ -54,6 +63,9 @@ def get_employee_by_id(emp_id):
 
 # UPDATE - Cập nhật thông tin nhân viên
 def update_employee(emp_id, name=None, img=None, embedding=None):
+    """
+    Update employee information in the database.
+    """
     conn = connect_db()
     cursor = conn.cursor()
     fields = []
@@ -79,6 +91,9 @@ def update_employee(emp_id, name=None, img=None, embedding=None):
 
 # DELETE - Xoá nhân viên
 def delete_employee(emp_id):
+    """
+    Delete an employee from the database by their ID.
+    """
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM employee WHERE employee_id = %s", (emp_id,))
@@ -89,8 +104,8 @@ def delete_employee(emp_id):
 
 def check_employee_exists(emp_id):
     """
-    Kiểm tra xem nhân viên với emp_id có tồn tại trong cơ sở dữ liệu hay không.
-    Trả về True nếu tồn tại, False nếu không.
+    Check if an employee with the given ID exists in the database.
+    Returns True if exists, False otherwise.
     """
     conn = connect_db()
     cursor = conn.cursor()
@@ -104,6 +119,9 @@ def check_employee_exists(emp_id):
 
 # Attendance database interaction
 def get_attendance_by_date(date):
+    """
+    Retrieve all attendance records for a specific date from the database.
+    """
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM attendance WHERE date = %s", (date,))
@@ -114,8 +132,8 @@ def get_attendance_by_date(date):
 
 def check_id_attended_today(emp_id):
     """
-    Kiểm tra xem nhân viên với emp_id đã điểm danh hôm nay chưa.
-    Trả về True nếu đã điểm danh, False nếu chưa.
+    Check if the employee with the given ID has checked in today.
+    Returns True if checked in, False otherwise.
     """
     if emp_id is None:
         print("ID nhân viên không hợp lệ.")
@@ -131,6 +149,9 @@ def check_id_attended_today(emp_id):
     return result[0] > 0
 
 def check_in(attendance: attendance.Attendances):
+    """
+    Insert a check-in record for the employee into the attendance table.
+    """
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute(
@@ -144,7 +165,7 @@ def check_in(attendance: attendance.Attendances):
 
 def check_out(emp_id, date, time):
     """
-    Điểm danh ra cho nhân viên với emp_id vào ngày date và thời gian time.
+    Check out for the employee with emp_id on the given date and time.
     """
     conn = connect_db()
     cursor = conn.cursor()
@@ -156,8 +177,8 @@ def check_out(emp_id, date, time):
 
 def check_id_out_today(emp_id):
     """
-    Kiểm tra xem nhân viên với emp_id đã điểm danh ra hôm nay chưa.
-    Trả về True nếu đã điểm danh ra, False nếu chưa.
+    Check if the employee with emp_id has checked out today.
+    Returns True if checked out, False otherwise.
     """
     if emp_id is None:
         print("ID nhân viên không hợp lệ.")
@@ -175,6 +196,9 @@ def check_id_out_today(emp_id):
 # Admin database interaction
 
 def get_admin():
+    """
+    Get admin account information from the database.
+    """
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM admin")
@@ -187,13 +211,18 @@ def get_admin():
 # Violations database interaction
 
 def check_late(emp_id,check_in_time):
+    """
+    Check if the employee is late based on check-in time and insert a violation if applicable.
+    """
     print(emp_id)
     today= datetime.now().strftime("%Y-%m-%d")
     con = connect_db()
     cursor = con.cursor()
     cursor.execute("SELECT * FROM policy WHERE hours < %s", (check_in_time,))
     result = cursor.fetchone()
+    cursor.fetchall()  
     policy = Policy(result[1], result[2], result[3], result[0]) if result else None
+    print(policy.hours)
     if policy:
         check_in_time = datetime.strptime(check_in_time, "%H:%M:%S")
         policy_hours = datetime.strptime(str(policy.hours), "%H:%M:%S")
@@ -206,7 +235,9 @@ def check_late(emp_id,check_in_time):
         cursor.close()
 
 def check_early(emp_id,check_out_time):
-
+    """
+    Check if the employee leaves early based on check-out time and insert a violation if applicable.
+    """
     today= datetime.now().strftime("%Y-%m-%d")
     con = connect_db()
     cursor = con.cursor()
@@ -226,6 +257,9 @@ def check_early(emp_id,check_out_time):
 
 
 def get_violation_today():
+    """
+    Get all violation records for today from the database.
+    """
     conn = connect_db()
     cursor = conn.cursor()
     today = datetime.now().strftime("%Y-%m-%d")
@@ -238,6 +272,9 @@ def get_violation_today():
 # Policy database interaction
 
 def get_all_policies():
+    """
+    Get all policy records from the database.
+    """
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM policy")
@@ -257,6 +294,9 @@ def get_all_policies():
     return policies
 
 def get_policy_by_id(policy_id):
+    """
+    Get a policy record by its ID from the database.
+    """
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM policy WHERE policy_id = %s", (policy_id,))

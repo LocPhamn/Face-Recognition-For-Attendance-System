@@ -70,25 +70,25 @@ def validate_input(entry_id, entry_name):
 
     return True
 
-def load_attendance_to_table(data_path):
-    """
-    Load today's attendance data from CSV and display in the attendance table.
-
-    Displays error if the CSV file for the current date does not exist.
-    """
+def load_attendance_to_table(type_="checkin"):
     today = datetime.now().strftime("%Y-%m-%d")
-    csv_filepath = os.path.join(data_path, f"{today}.csv")
+    result = database.get_attendance_by_date(today)
 
-    if not os.path.exists(csv_filepath):
-        messagebox.showerror("Error", f"Attendance file {today}.csv not found")
-        return
+    for item in tb.get_children():
+        tb.delete(item)
 
-    with open(csv_filepath, newline='', encoding='utf-8') as f:
-        reader = csv.reader(f)
-        next(reader)  # Skip header
-        for row in reader:
-            if len(row) == 4:
-                tb.insert('', 'end', text=row[0], values=(row[1], row[2], row[3]))
+    for row in result:
+        emp_id = row[1]
+        employee = database.get_employee_by_id(emp_id)
+        name = employee.name if employee else "Unknown"
+        date = row[2]
+        checkin_time = row[3]
+        checkout_time = row[4]
+        if type_ == "checkin":
+            tb.insert('', 'end', text=emp_id,values=(name, date, checkin_time))
+
+        else:
+            tb.insert('', 'end', text=emp_id,values=(name, date, checkout_time))
 
 def async_preprocess(frame, embedding_model):
     """
@@ -108,7 +108,7 @@ def async_preprocess(frame, embedding_model):
 
 def check_id_exists(id_value, data_path):
     """
-    Check if an employee ID already exists in the employee CSV file.
+    Check if an employee ID already exists in the employee db.
 
     Args:
         id_value (str): Employee ID to check
@@ -128,7 +128,7 @@ def check_id_exists(id_value, data_path):
 
 def check_admin_account():
     """
-    Check if admin credentials are set in the admin file.
+    Check if admin credentials are set in the db.
 
     Returns:
         tuple: (admin_username, admin_password) if credentials exist, else None
@@ -147,7 +147,7 @@ def change_password():
     """
     Change the admin password by verifying the current password and setting a new one.
 
-    Validates inputs, checks current password, and updates the password in the file.
+    Validates inputs, checks current password, and updates the password in the db.
     """
     if not check_admin_account():
         messagebox.showerror("Error", "Invalid admin credentials")
@@ -190,7 +190,6 @@ def change_password():
         change_pass_window.withdraw()
         change_pass_window.grab_release()
 
-    # Gán lại command cho nút xác nhận
     change_pass_window.verify_button.config(command=do_change_password)
 
 def Save(name_value=None, img_path=None, embedding_path=None, id_value=None):
@@ -216,7 +215,7 @@ def SaveProfile():
     """
     Save employee profile (ID, name, image path, and embedding) after admin verification.
 
-    Validates inputs, checks for duplicate IDs, and saves data to CSV after admin authentication.
+    Validates inputs, checks for duplicate IDs, and saves data to db after admin authentication.
     """
 
     id_value = txt.get()
@@ -299,15 +298,6 @@ def Attendance(type_="checkin"):
     for item in tb.get_children():
         tb.delete(item)
 
-    # Initialize today's attendance CSV
-    csv_filename = today.strftime("%Y-%m-%d") + ".csv"
-    csv_filepath = os.path.join(report_dir, csv_filename)
-    if not os.path.exists(csv_filepath):
-        with open(csv_filepath, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(['id', 'name', 'date', time_col])
-        print(f"Created CSV file: {csv_filepath}")
-
     # Start video capture
     cap = cv2.VideoCapture(0)
     frame_id = 0
@@ -340,10 +330,10 @@ def Attendance(type_="checkin"):
                 if type_ == "checkin":
                     can_write = distant <= threshold and not database.check_id_attended_today(id)
                     if can_write:
-                        print(id)
                         attendance = Attendances(id, today.strftime("%Y-%m-%d"), today.strftime("%H:%M:%S"))
                         database.check_in(attendance)
                         database.check_late(attendance.employee_id,attendance.check_in)
+                        load_attendance_to_table("checkin")
                         messagebox.showinfo("Success", success_msg)
                         break
                     else:
@@ -354,6 +344,7 @@ def Attendance(type_="checkin"):
                     if can_write:
                         database.check_out(id,today.strftime("%Y-%m-%d"),today.strftime("%H:%M:%S"))
                         database.check_early(id, today.strftime("%H:%M:%S"))
+                        load_attendance_to_table("checkout")
                         messagebox.showinfo("Success", success_msg)
                         break
                     else:
@@ -384,7 +375,6 @@ def Attendance(type_="checkin"):
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
-    load_attendance_to_table(report_dir)
     cap.release()
     cv2.destroyAllWindows()
 
@@ -405,7 +395,9 @@ def OpenAdminWindow():
 
             entry_username.delete(0, 'end')
             entry_password.delete(0, 'end')
-
+            load_employee_data()
+            load_attendance_data()
+            load_violation_data()
             management_window.deiconify()
             management_window.grab_set()
         else:
@@ -422,12 +414,10 @@ def OpenEditWindow():
     values = tree.item(selected, 'values')
     emp_id = values[0]
 
-    # Tạo cửa sổ mới
     edit_win = tkinter.Toplevel(management_window)
     edit_win.title(f"Chỉnh sửa nhân viên ID {emp_id}")
     edit_win.geometry("400x200")
 
-    # Label và Entry cho từng trường
     tkinter.Label(edit_win, text="Tên:").grid(row=0, column=0, padx=10, pady=5, sticky='e')
     entry_name = tkinter.Entry(edit_win)
     entry_name.insert(0, values[1])
@@ -452,9 +442,13 @@ def OpenEditWindow():
 
 def load_employee_data():
     """
-    Load employee data from CSV and populate the Treeview.
+    Load employee data from db and populate the Treeview.
     """
     try:
+        # Clear existing data in the Treeview
+        for item in tree.get_children():
+            tree.delete(item)
+
         result = database.read_employees()
         for row in result:
             tree.insert('', 'end', values=(row[0], row[1], row[2], row[3]))
@@ -464,21 +458,27 @@ def load_employee_data():
 
 def load_attendance_data():
     """
-    Load employee data from CSV and populate the Treeview.
+    Load attendance from db and populate the Treeview.
     """
+    # Clear existing data in the Treeview
+    for item in attendance_tree.get_children():
+        attendance_tree.delete(item)
     try:
         result = database.get_attendance_by_date(datetime.now().strftime("%Y-%m-%d"))
         for row in result:
             employee = database.get_employee_by_id(row[1])
-            tb.insert('', 'end', values=(row[0], employee.name, row[2], row[3],row[4]))
+            attendance_tree.insert('', 'end', values=(row[0], employee.name, row[2], row[3],row[4]))
     except Exception as e:
         messagebox.showerror("Error", f"Failed to load attendance data: {e}")
         return
 
 def load_violation_data():
     """
-    Load employee data from CSV and populate the Treeview.
+    Load violation data from db and populate the Treeview.
     """
+    # Clear existing data in the Treeview
+    for item in violation_tree.get_children():
+        violation_tree.delete(item)
     try:
         result = database.get_violation_today()
         for violation in result:
@@ -560,56 +560,44 @@ notebook.add(violation_tab, text="Vi phạm hôm nay")
 lbl_nv = ttk.Label(tab_employee, text="Danh sách nhân viên", font=('Arial', 14))
 lbl_nv.pack(pady=10)
 
-# Config Treeview for employee data
 columns = ("id", "name", "img", "embedding")
 tree = ttk.Treeview(tab_employee, columns=columns, show="headings", height=10)
 
-# Name the columns
-tree.heading("id", text="ID")
+tree.heading("id", text="ID_NV")
 tree.heading("name", text="Tên")
 tree.heading("img", text="Ảnh (đường dẫn)")
 tree.heading("embedding", text="Embedding")
 
-# Set column widths
 tree.column("id", width=50)
 tree.column("name", width=150)
 tree.column("img", width=200)
 tree.column("embedding", width=400)
 tree.pack(pady=10)
 
-load_employee_data()
-
 btn_edit = ttk.Button(tab_employee, text="Edit", command=OpenEditWindow)
 btn_edit.pack(pady=10)
 
-
 lbl_cc = ttk.Label(tab_attendance, text="Chấm công nhân viên", font=('Arial', 14))
 lbl_cc.pack(pady=10)
-
-# Config Treeview for attendance data
 columns_attendance = ("id", "name", "date", "checkin","checkout")
-tb = ttk.Treeview(tab_attendance, columns=columns_attendance, show="headings", height=10)
+attendance_tree = ttk.Treeview(tab_attendance, columns=columns_attendance, show="headings", height=10)
 
-# Name the columns
-tb.heading("id", text="ID")
-tb.heading("name", text="Tên")
-tb.heading("date", text="Ngày")
-tb.heading("checkin", text="Checkin")
-tb.heading("checkout", text="Checkout")
+attendance_tree.heading("id", text="ID_TG")
+attendance_tree.heading("name", text="Tên")
+attendance_tree.heading("date", text="Ngày")
+attendance_tree.heading("checkin", text="Checkin")
+attendance_tree.heading("checkout", text="Checkout")
 
-# Set column widths
-tb.column("id", width=50)
-tb.column("name", width=150)
-tb.column("date", width=100)
-tb.column("checkin", width=100)
-tb.column("checkout", width=100)
-tb.pack(pady=10)
-
-load_attendance_data()
+attendance_tree.column("id", width=50)
+attendance_tree.column("name", width=150)
+attendance_tree.column("date", width=100)
+attendance_tree.column("checkin", width=100)
+attendance_tree.column("checkout", width=100)
+attendance_tree.pack(pady=10)
 
 columns_violation = ("id", "name","type","minutes", "deduction","date")
 violation_tree = ttk.Treeview(violation_tab, columns=columns_violation, show="headings")
-violation_tree.heading("id", text="ID")
+violation_tree.heading("id", text="ID_VP")
 violation_tree.heading("name", text="Tên người vi phạm")
 violation_tree.heading("type", text="Loại vi phạm")
 violation_tree.heading("minutes", text="Số phút vi phạm")
@@ -617,7 +605,6 @@ violation_tree.heading("deduction", text="Số tiền phạt")
 violation_tree.heading("date", text="Ngày vi phạm")
 violation_tree.pack(fill="both", expand=True)
 
-#Set column widths
 violation_tree.column("id", width=50)
 violation_tree.column("name", width=150)
 violation_tree.column("type", width=100)
@@ -625,7 +612,8 @@ violation_tree.column("minutes", width=100)
 violation_tree.column("deduction", width=100)
 violation_tree.column("date", width=100)
 
-load_violation_data()
+quit_btn = tkinter.Button(management_window, text="Quit", fg="black", bg="#ff4d4d", width=17, height=1, activebackground="white", font=('times', 16, ' bold '), command=management_window.withdraw)
+quit_btn.pack(pady=10)
 
 # Help menubar
 menubar = Menu(window)
