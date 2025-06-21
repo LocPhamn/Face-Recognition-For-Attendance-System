@@ -484,6 +484,7 @@ def load_violation_data():
         for violation in result:
             employee = database.get_employee_by_id(violation[1])
             policy = database.get_policy_by_id(violation[2])
+            print(policy.name)
             violation_tree.insert('', 'end', values=(violation[0], employee.name, policy.name,violation[3],violation[4],violation[5]))
     except Exception as e:
         messagebox.showerror("Error", f"Failed to load violation data: {e}")

@@ -1,5 +1,11 @@
 # Face-Recognition-For-Attendance-System
 
+## 📺 Demo Video
+
+You can watch the project demo here:
+
+[Demo Video](https://drive.google.com/file/d/1Go0Z6ha2YooVh-sEB3TEQo0UwR7K3Tdq/view?usp=drive_link)
+
 ## Pretrained Model
 
 The pretrained model (`model-v1.h5`) is available on Google Drive:
