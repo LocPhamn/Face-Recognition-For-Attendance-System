@@ -281,6 +281,7 @@ def Attendance(type_="checkin"):
     """
     today = datetime.now()
     threshold = config.THRESHOLD
+    percent_threshold = config.PERCENTAGE_THRESHOLD
 
     # Chọn thư mục và tên cột theo loại điểm danh
     if type_ == "checkin":
@@ -304,7 +305,7 @@ def Attendance(type_="checkin"):
     frame_interval = 30
 
     start_time = time.time()
-    time_out = 10
+    time_out = 20
 
     while cap.isOpened():
         current_time = time.time()
@@ -328,7 +329,7 @@ def Attendance(type_="checkin"):
                     messagebox.showinfo("Error", "Unknown face detected!")
                     break
                 if type_ == "checkin":
-                    can_write = distant <= threshold and not database.check_id_attended_today(id)
+                    can_write = scale/100 >= percent_threshold and not database.check_id_attended_today(id)
                     if can_write:
                         attendance = Attendances(id, today.strftime("%Y-%m-%d"), today.strftime("%H:%M:%S"))
                         database.check_in(attendance)
@@ -340,7 +341,7 @@ def Attendance(type_="checkin"):
                         messagebox.showinfo("Error", "Employee has already checked in today")
                         break
                 elif type_ == "checkout":
-                    can_write = distant <= threshold and database.check_id_attended_today(id) and not database.check_id_out_today(id)
+                    can_write = scale/100 >= percent_threshold and database.check_id_attended_today(id) and not database.check_id_out_today(id)
                     if can_write:
                         database.check_out(id,today.strftime("%Y-%m-%d"),today.strftime("%H:%M:%S"))
                         database.check_early(id, today.strftime("%H:%M:%S"))
@@ -358,6 +359,7 @@ def Attendance(type_="checkin"):
             if face_bb:
                 cv2.rectangle(frame, (face_bb.x, face_bb.y), (face_bb.x + face_bb.w, face_bb.y + face_bb.h), color, 2)
             cv2.imshow("img", frame)
+
             if current_time - start_time > time_out:
                 break
 

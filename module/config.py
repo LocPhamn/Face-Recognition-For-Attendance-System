@@ -29,4 +29,6 @@ VALIDATION_STEPS = 10
 EPOCHS = 10
 
 # Threshold for verification
-THRESHOLD = 0.56
+THRESHOLD = 0.4
+# Threshold for verification
+PERCENTAGE_THRESHOLD = 0.7
