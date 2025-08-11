@@ -1,21 +1,23 @@
-import csv
 import os
-import re
 import threading
 import time
 import tkinter
-from tkinter import ttk, messagebox
-from tkinter import *
 from datetime import datetime
-from tkinter import messagebox as mess
 import cv2
 import numpy as np
+import cvzone
+import regex
+
+from tkinter import ttk, messagebox
+from tkinter import *
 from deepface.models.spoofing.FasNet import Fasnet
 
 from classes.attendance import Attendances
 from classes.employee import Employee
 from model.classification_model import FacialRecognitionModel
+
 from module import config, find, utils, database
+
 # Initialize models
 face_model = FacialRecognitionModel()
 embedding_model = face_model.get_embedding_model()
@@ -47,7 +49,7 @@ def validate_input(entry_id, entry_name):
         bool: True if inputs are valid, False otherwise
     """
     id_pattern = r'^\d{1,3}$'
-    name_pattern = r'^[a-zA-Z\s-]{1,50}$'
+    name_pattern = r'\p{L}{1,30}'
 
     id_value = entry_id.strip()
     name_value = entry_name.strip()
@@ -56,7 +58,7 @@ def validate_input(entry_id, entry_name):
     if not id_value:
         messagebox.showerror("Error", "ID cannot be empty")
         return
-    if not re.match(id_pattern, id_value):
+    if not regex.match(id_pattern, id_value):
         messagebox.showerror("Error", "ID must contain only numbers and be 1-3 digits long")
         return
 
@@ -64,7 +66,7 @@ def validate_input(entry_id, entry_name):
     if not name_value:
         messagebox.showerror("Error", "Name cannot be empty")
         return
-    if not re.match(name_pattern, name_value):
+    if not regex.match(name_pattern, name_value):
         messagebox.showerror("Error", "Name must contain only letters, spaces, or hyphens (max 50 characters)")
         return
 
@@ -106,25 +108,6 @@ def async_preprocess(frame, embedding_model):
         real_face, anti_face_conf = anti_spoofing_model.analyze(frame, facial_area)
     processing = False
 
-def check_id_exists(id_value, data_path):
-    """
-    Check if an employee ID already exists in the employee db.
-
-    Args:
-        id_value (str): Employee ID to check
-
-    Returns:
-        bool: True if ID exists, False otherwise
-    """
-    if not os.path.exists(config.EMPLOYEE_CSV):
-        return False
-    with open(data_path, 'r', newline='') as f:
-        reader = csv.reader(f)
-        next(reader, None)  # Skip header
-        for row in reader:
-            if row and row[0] == id_value:
-                return True
-    return False
 
 def check_admin_account():
     """
@@ -277,21 +260,16 @@ def TakeImages():
 def Attendance(type_="checkin"):
     """
     Track and record employee attendance using face recognition.
-    type_: "checkin" hoặc "checkout"
+    type_: "checkin" or "checkout"
     """
     today = datetime.now()
     threshold = config.THRESHOLD
     percent_threshold = config.PERCENTAGE_THRESHOLD
 
-    # Chọn thư mục và tên cột theo loại điểm danh
     if type_ == "checkin":
         report_dir = config.ATTENDANCE_REPORT
-        time_col = "checkin"
-        success_msg = "Check in success."
     else:
         report_dir = config.CHECKOUT_REPORT
-        time_col = "checkout"
-        success_msg = "Checked out success."
 
     os.makedirs(report_dir, exist_ok=True)
 
@@ -306,6 +284,7 @@ def Attendance(type_="checkin"):
 
     start_time = time.time()
     time_out = 20
+    count = 1
 
     while cap.isOpened():
         current_time = time.time()
@@ -314,7 +293,7 @@ def Attendance(type_="checkin"):
             print(f"Error with frame {frame_id}")
             break
         frame_id += 1
-
+        image = frame
         # Process frame periodically
         if frame_id % frame_interval == 0 and not processing:
             threading.Thread(target=async_preprocess, args=(frame.copy(), embedding_model)).start()
@@ -324,56 +303,84 @@ def Attendance(type_="checkin"):
             id, identity, distant = find.findPerson(embedding_result)
             scale = utils.distance_to_similarity(distant)
 
-            if (current_time - start_time >= time_out/2):
-                if identity == "unknown":
-                    messagebox.showinfo("Error", "Unknown face detected!")
-                    break
+            if (current_time - start_time >= time_out*count/2):
+
+
+
                 if type_ == "checkin":
                     can_write = scale/100 >= percent_threshold and not database.check_id_attended_today(id)
+                    if identity == "unknown":
+                        utils.speak_vie(f"Chấm công thất bại!\nKhông nhận diện được nhân viên.")
+                        break
                     if can_write:
                         attendance = Attendances(id, today.strftime("%Y-%m-%d"), today.strftime("%H:%M:%S"))
                         database.check_in(attendance)
                         database.check_late(attendance.employee_id,attendance.check_in)
                         load_attendance_to_table("checkin")
-                        messagebox.showinfo("Success", success_msg)
-                        break
+                        utils.speak_vie(f"Bạn {identity} đã chấm công thành công!")
+                        count += 1
+                        # messagebox.showinfo("Success", success_msg)
+
                     else:
-                        messagebox.showinfo("Error", "Employee has already checked in today")
-                        break
+                        utils.speak_vie(f"Bạn {identity} đã chấm công trước đó !")
+                        count += 1
+                        # messagebox.showinfo("Error", "Employee has already checked in today")
+
                 elif type_ == "checkout":
                     can_write = scale/100 >= percent_threshold and database.check_id_attended_today(id) and not database.check_id_out_today(id)
                     if can_write:
                         database.check_out(id,today.strftime("%Y-%m-%d"),today.strftime("%H:%M:%S"))
                         database.check_early(id, today.strftime("%H:%M:%S"))
                         load_attendance_to_table("checkout")
-                        messagebox.showinfo("Success", success_msg)
-                        break
+                        utils.speak_vie(f"Bạn {identity} đã chấm ca thành công!")
+                        count += 1
+                        # messagebox.showinfo("Success", success_msg)
+
                     else:
-                        messagebox.showinfo("Error", "Employee has not checked in today or has already checked out")
-                        break
+                        utils.speak_vie(f"Bạn {identity} đã chấm ca trước đó !")
+                        count += 1
+                        # messagebox.showinfo("Error", "Employee has not checked in today or has already checked out")
+
 
             # Visualize results
-            color = (0, 255, 0) if distant <= threshold else (0, 0, 255)
-            cv2.putText(frame, f"Hello: {identity}", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-            cv2.putText(frame, f"Match: {scale:.1f}%", (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+            color = (0, 255, 0) if scale/100 >= percent_threshold else (0, 0, 255)
+
+            # cv2.putText(image, f"Hello: Employee", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+            cv2.putText(image, f"Match: {scale:.1f}%", (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
             if face_bb:
-                cv2.rectangle(frame, (face_bb.x, face_bb.y), (face_bb.x + face_bb.w, face_bb.y + face_bb.h), color, 2)
-            cv2.imshow("img", frame)
+                image = cvzone.cornerRect(
+                    image,
+                    (face_bb.x, face_bb.y, face_bb.w, face_bb.h),
+                    l=30,
+                    t=2,
+                    rt=1,
+                    colorR=color,
+                    colorC = (0, 255, 0)
+                )
 
-            if current_time - start_time > time_out:
-                break
 
-        elif embedding_result is not None and not real_face:
+
+        elif embedding_result is not None :
             color = (0, 0, 255)
-            cv2.putText(frame, "Fake Face", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-            cv2.putText(frame, f"Match: {anti_face_conf:.1f}%", (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+            cv2.putText(image, "Fake Face", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+            cv2.putText(image, f"Match: {anti_face_conf:.1f}%", (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
             if face_bb:
-                cv2.rectangle(frame, (face_bb.x, face_bb.y), (face_bb.x + face_bb.w, face_bb.y + face_bb.h), color, 2)
-            cv2.imshow("img", frame)
-            if (current_time - start_time >= time_out/2):
-                messagebox.showinfo("Error", "Fake Face Detected!")
-                break
+                image = cvzone.cornerRect(
+                    image,
+                    (face_bb.x, face_bb.y, face_bb.w, face_bb.h),
+                    l=30,
+                    t=2,
+                    rt=1,
+                    colorR=color,
+                    colorC=(0, 255, 0)
+                )
 
+            if (current_time - start_time >= time_out/2):
+                utils.speak_vie(f"Chấm công thất bại!\nKhông nhận diện được nhân viên.")
+                # messagebox.showinfo("Error", "Fake Face Detected!")
+                # break
+
+        cv2.imshow("img", image)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 

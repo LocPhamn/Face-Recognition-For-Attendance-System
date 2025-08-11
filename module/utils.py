@@ -1,6 +1,9 @@
 import cv2
 from deepface.modules import detection, preprocessing
-
+from gtts import gTTS
+import pygame
+import time
+import os
 
 def distance_to_similarity(distance, min_d=0.2, max_d=0.8):
     if distance > max_d:
@@ -41,3 +44,16 @@ def check_face(path,embedding_model):
     face_bb = faces[0].facial_area  # dict với x, y, w, h
     embedding_img = embedding_model.predict(face_img)[0]
     return embedding_img, face_bb
+
+def speak_vie(text):
+    tts = gTTS(text=text, lang='vi')
+    filename = "success_vi.mp3"
+    tts.save(filename)
+    pygame.mixer.init()
+    pygame.mixer.music.load(filename)
+    pygame.mixer.music.play()
+    while pygame.mixer.music.get_busy():
+        time.sleep(0.1)
+    pygame.mixer.music.unload()
+    pygame.mixer.quit()
+    os.remove(filename)
