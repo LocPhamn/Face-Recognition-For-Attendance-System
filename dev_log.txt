@@ -1,0 +1,66 @@
+// Giới thiệu vấn đề
+Bối cảnh: trong môi trường làm việc hiện tai, việc điểm danh nhân viên là một phần quan trọng để quản lý thời gian làm việc và tính lương.
+Vấn đề: Hiện tại, việc điểm danh thường được thực hiện thủ công, dẫn đến nhiều khó khăn và bất cập.
+Khó khăn hiện tại:
+ - Thời gian nghiên cứu và triển khai trong vòng 3 tuần
+ - Dữ liệu khuôn mặt của nhân viên ít và không đồng bộ
+ - thành viên tham gia dự án không có kinh nghiệm về nhận diện khuôn mặt
+
+// Giải pháp đề xuất
+Giải pháp:
+ - sử dụng công nghệ nhận diện khuôn mặt sẵn có để giảm thời gian phát triển
+ - với dữ liệu khuôn mặt ít có thể sử dụng các mô hình đã được huấn luyện trước và fine tune lại với dữ liệu khuôn mặt của người việt
+
+// Lợi ích của giải pháp
+Lợi ích:
+ - Giảm thời gian điểm danh, giúp nhân viên tập trung vào công việc chính
+ - Tăng tính chính xác trong việc quản lý thời gian làm việc
+ - Giảm thiểu sai sót do điểm danh thủ công
+ - Cải thiện trải nghiệm của nhân viên khi không cần phải thực hiện các thao tác phức tạp
+
+ // Kế hoạch triển khai
+ Công nghệ sử dụng:
+  - Sử dụng cặp model face detection và face recognition có hiệu suất cao với ảnh đã aligment :
+    - Face detection: MTCNN
+    - Face recognition: VGGFace
+    - Sử dụng thư viện OpenCV để xử lý ảnh và video
+
+Training model:
+  - Sử dụng mô hình VGGFace đã được huấn luyện trước và fine-tune với dữ liệu khuôn mặt của nhân viên
+  - Sử dụng kỹ thuật transfer learning để giảm thời gian huấn luyện và cải thiện độ chính xác
+
+Triển khai:
+  - hiện tại các phần mềm điểm danh thường dùng camera hoặc các phần cứng điểm danh chuyên dụng nên em lựa chọn hướng phát triển desktop app vì:
+    - Tích hợp dễ dàng với phần cứng hiện có
+      - Hầu hết các camera USB, webcam, hoặc camera IP đều dễ dàng kết nối và xử lý trực tiếp qua máy tính.
+      - Không phụ thuộc vào thiết bị di động của người dùng → phù hợp môi trường cố định (cổng ra vào, lớp học, nhà máy).
+
+    - Xử lý AI trực tiếp tại máy (on-premise)
+      - Không cần gửi dữ liệu khuôn mặt lên cloud → đảm bảo bảo mật và quyền riêng tư.
+      - Giảm độ trễ vì xử lý ngay tại máy → hỗ trợ real-time.
+
+    - Độ ổn định cao
+      - Không phụ thuộc vào kết nối Internet như web app hoặc mobile app.
+      - Có thể chạy liên tục nhiều giờ liền trên máy cố định, phù hợp cho hệ thống điểm danh 24/7.
+
+    - Quản lý dữ liệu tập trung
+      - Desktop app có thể đồng bộ với cơ sở dữ liệu nội bộ hoặc server nội bộ.
+      - Thuận tiện xuất báo cáo, backup, hoặc tích hợp với hệ thống quản lý nhân sự.
+
+    - Tối ưu cho môi trường có thiết bị cố định
+      - Phòng học, văn phòng, nhà máy thường có vị trí đặt camera cố định → desktop app chỉ cần chạy tại một máy tính kết nối camera là đủ.
+      - Không cần triển khai phần mềm lên nhiều thiết bị.
+
+// Lộ trình triển khai:
+  - Tuần 1: Nghiên cứu công nghệ, thu thập dữ liệu khuôn mặt, cài đặt môi trường phát triển
+  - Tuần 2: Phát triển và fine-tune mô hình nhận diện khuôn mặt, xây dựng giao diện desktop app
+  - Tuần 3: Kiểm thử, tối ưu hiệu suất, triển khai và hướng dẫn sử dụng cho nhân viên
+
+// Kết luận
+Kết luận: Giải pháp sử dụng công nghệ nhận diện khuôn mặt để điểm danh nhân viên sẽ giúp tiết kiệm thời gian,
+tăng tính chính xác và cải thiện trải nghiệm của nhân viên. Việc triển khai trên desktop app sẽ đảm bảo tính ổn định
+và dễ dàng tích hợp với phần cứng hiện có. Với kế hoạch triển khai rõ ràng và công nghệ phù hợp, dự án có thể hoàn thành trong vòng 3 tuần.
+
+
+
+

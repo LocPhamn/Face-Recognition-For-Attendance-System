@@ -42,3 +42,21 @@ We use **euclidean distance** between facial embeddings:
 ![Embedding Comparison](imgs/finetune_vgg.png)
 
 *Figure: Comparison of cosine distances using pretrained DeepFace model vs. fine-tuned VGG.*
+## 🚀 Get Started
+
+1. **Tạo môi trường Conda từ file `environment.yml`**  
+   ```bash
+   conda env create -f environment.yml
+   conda activate face-attendance
+    ```
+2. **Tải file weight của model**  
+   - [Download model-v1.h5](https://drive.google.com/file/d/1oBigalkRvHei7WMu8zn9L5KqxWZdy0mr/view?usp=sharing)
+   - Sau đó, cập nhật đường dẫn CHECKPOINT trong code trỏ tới file .h5 vừa tải.
+
+3. **Cấu hình kết nối database**  
+   Mở file `database.py` và chỉnh thông tin kết nối (host, user, password, database name) phù hợp với hệ thống của bạn.
+
+4. **Chạy ứng dụng**  
+   ```bash
+    python app.py
+    ```
