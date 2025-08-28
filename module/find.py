@@ -6,7 +6,7 @@ import numpy as np
 import cv2
 from deepface.modules import detection, preprocessing
 from tensorflow.tools.docs.doc_controls import header
-
+from module.utils import cosine_distance
 from model.classification_model import FacialRecognitionModel
 from module import config, utils, database
 
@@ -19,7 +19,7 @@ def DatabaseEmbedding(data_dir,model):
     for img in os.listdir(data_dir):
         img_path = os.path.join(data_dir,img)
         img_name = img.split('.')[0]
-        embedding_img, _ = utils.preprocess(img_path,model)
+        embedding_img, _ = utils.face_detect(img_path,model)
         embedding_dict[img_name] = embedding_img
 
     with open("db_named_embeddings.pkl", "wb") as f:
@@ -42,7 +42,9 @@ def findPerson(img):
 
     for employee in employees:
         embedding_img = np.load(employee[3])
-        dist = np.linalg.norm(img - embedding_img)
+
+        dist = cosine_distance(img, embedding_img)
+        print("distance:", dist)
         if dist < min_distant:
             min_distant = dist
             identity = employee[1]

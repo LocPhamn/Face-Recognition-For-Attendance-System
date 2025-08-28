@@ -16,7 +16,7 @@ from classes.attendance import Attendances
 from classes.employee import Employee
 from model.classification_model import FacialRecognitionModel
 
-from module import config, find, utils, database
+from module import config, find, utils, database, tts_threading
 
 # Initialize models
 face_model = FacialRecognitionModel()
@@ -102,7 +102,7 @@ def async_preprocess(frame, embedding_model):
     """
     global embedding_result, processing, face_bb, real_face, anti_face_conf
     processing = True
-    embedding_result, face_bb = utils.preprocess(frame, embedding_model)
+    embedding_result, face_bb = utils.face_detect(frame, embedding_model)
     if face_bb is not None:
         facial_area = (face_bb.x, face_bb.y, face_bb.w, face_bb.h)
         real_face, anti_face_conf = anti_spoofing_model.analyze(frame, facial_area)
@@ -280,7 +280,8 @@ def Attendance(type_="checkin"):
     # Start video capture
     cap = cv2.VideoCapture(0)
     frame_id = 0
-    frame_interval = 30
+    frame_interval = 30  # For recognition (heavy processing)
+    detection_interval = 3  # For fast detection (lightweight)
 
     start_time = time.time()
     time_out = 20
@@ -310,19 +311,19 @@ def Attendance(type_="checkin"):
                 if type_ == "checkin":
                     can_write = scale/100 >= percent_threshold and not database.check_id_attended_today(id)
                     if identity == "unknown":
-                        utils.speak_vie(f"Chấm công thất bại!\nKhông nhận diện được nhân viên.")
+                        tts_threading.speak_async(f"Chấm công thất bại!\nKhông nhận diện được nhân viên.")
                         break
                     if can_write:
                         attendance = Attendances(id, today.strftime("%Y-%m-%d"), today.strftime("%H:%M:%S"))
                         database.check_in(attendance)
                         database.check_late(attendance.employee_id,attendance.check_in)
                         load_attendance_to_table("checkin")
-                        utils.speak_vie(f"Bạn {identity} đã chấm công thành công!")
+                        tts_threading.speak_async(f"Bạn {identity} đã chấm công thành công!")
                         count += 1
                         # messagebox.showinfo("Success", success_msg)
 
                     else:
-                        utils.speak_vie(f"Bạn {identity} đã chấm công trước đó !")
+                        tts_threading.speak_async(f"Bạn {identity} đã chấm công trước đó !")
                         count += 1
                         # messagebox.showinfo("Error", "Employee has already checked in today")
 
@@ -332,12 +333,12 @@ def Attendance(type_="checkin"):
                         database.check_out(id,today.strftime("%Y-%m-%d"),today.strftime("%H:%M:%S"))
                         database.check_early(id, today.strftime("%H:%M:%S"))
                         load_attendance_to_table("checkout")
-                        utils.speak_vie(f"Bạn {identity} đã chấm ca thành công!")
+                        tts_threading.speak_async(f"Bạn {identity} đã chấm ca thành công!")
                         count += 1
                         # messagebox.showinfo("Success", success_msg)
 
                     else:
-                        utils.speak_vie(f"Bạn {identity} đã chấm ca trước đó !")
+                        tts_threading.speak_async(f"Bạn {identity} đã chấm ca trước đó !")
                         count += 1
                         # messagebox.showinfo("Error", "Employee has not checked in today or has already checked out")
 
@@ -376,14 +377,14 @@ def Attendance(type_="checkin"):
                 )
 
             if (current_time - start_time >= time_out/2):
-                utils.speak_vie(f"Chấm công thất bại!\nKhông nhận diện được nhân viên.")
+                tts_threading.speak_async(f"Chấm công thất bại!\nKhông nhận diện được nhân viên.")
                 # messagebox.showinfo("Error", "Fake Face Detected!")
                 # break
 
         cv2.imshow("img", image)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-
+    tts_threading.stop_tts_worker()
     cap.release()
     cv2.destroyAllWindows()
 
