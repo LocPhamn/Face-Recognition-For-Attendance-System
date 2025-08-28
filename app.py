@@ -245,7 +245,7 @@ def TakeImages():
                 print(f"Saved image: {img_path}")
                 messagebox.showinfo("Success", f"Stored image path: {img_path}")
 
-                embedding_img, _ = utils.preprocess(img_path, embedding_model)
+                embedding_img, _ = utils.face_detect(img_path, embedding_model)
                 np.save(os.path.join(config.EMPLOYEE_EMBEDDING, f"{id_value}.npy"), embedding_img)
                 break
             elif key == ord('q'):
@@ -305,9 +305,6 @@ def Attendance(type_="checkin"):
             scale = utils.distance_to_similarity(distant)
 
             if (current_time - start_time >= time_out*count/2):
-
-
-
                 if type_ == "checkin":
                     can_write = scale/100 >= percent_threshold and not database.check_id_attended_today(id)
                     if identity == "unknown":
